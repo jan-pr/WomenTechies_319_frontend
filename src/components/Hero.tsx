@@ -51,9 +51,9 @@ const Hero = () => {
               <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
             </Link>
             
-            <button className="w-full sm:w-auto bg-white/5 backdrop-blur-md border border-white/10 text-white px-10 py-5 rounded-2xl font-semibold text-sm tracking-widest uppercase hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all duration-500 animate-float delay-100">
+            <Link to="/explore" className="w-full text-center sm:w-auto bg-white/5 backdrop-blur-md border border-white/10 text-white px-10 py-5 rounded-2xl font-semibold text-sm tracking-widest uppercase hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all duration-500 animate-float delay-100">
               EXPLORE
-            </button>
+            </Link>
           </motion.div>
         </div>
 

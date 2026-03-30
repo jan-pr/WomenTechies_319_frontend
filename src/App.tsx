@@ -5,6 +5,7 @@ import Features from './components/Features';
 import NetworkStats from './components/NetworkStats';
 import VantaBackground from './components/VantaBackground';
 import SubmitTask from './components/SubmitTask';
+import ExploreTask from './components/ExploreTask';
 
 function LandingPage() {
   return (
@@ -50,6 +51,7 @@ function App() {
             <Routes>
               <Route path="/" element={<LandingPage />} />
               <Route path="/submit" element={<SubmitTask />} />
+              <Route path="/explore" element={<ExploreTask />} />
             </Routes>
           </main>
 
