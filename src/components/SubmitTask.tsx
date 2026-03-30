@@ -1,7 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Database, Zap, Search, CheckCircle, ArrowRight, ArrowLeft, Loader2, Leaf } from 'lucide-react';
 import { Link } from 'react-router-dom';
+
+type NodePosition = {
+  top: string;
+  left: string;
+};
+
+const createSimulationNodes = (count: number): NodePosition[] =>
+  Array.from({ length: count }, (_, index) => ({
+    top: `${18 + ((index * 17) % 62)}%`,
+    left: `${12 + ((index * 23) % 68)}%`,
+  }));
 
 const SubmitTask = () => {
   const [step, setStep] = useState(1);
@@ -9,6 +20,7 @@ const SubmitTask = () => {
   const [ram, setRam] = useState(4);
   const [isFinding, setIsFinding] = useState(false);
   const [foundNodes, setFoundNodes] = useState(0);
+  const nodePositions = useMemo(() => createSimulationNodes(12), []);
 
   // Real-time carbon offset calculation (simulated)
   const carbonOffset = ((cpu * 0.42) + (ram * 0.15)).toFixed(2);
@@ -203,16 +215,13 @@ const SubmitTask = () => {
               </div>
 
               {/* Simulated Nodes Dots */}
-              {isFinding && [...Array(foundNodes)].map((_, i) => (
+              {isFinding && nodePositions.slice(0, foundNodes).map((position, i) => (
                 <motion.div 
                   key={i}
                   initial={{ opacity: 0, scale: 0 }}
                   animate={{ opacity: 1, scale: 1 }}
                   className="absolute w-2 h-2 bg-emerald-400 rounded-full"
-                  style={{
-                    top: `${Math.random() * 80 + 10}%`,
-                    left: `${Math.random() * 80 + 10}%`
-                  }}
+                  style={position}
                 />
               ))}
             </div>

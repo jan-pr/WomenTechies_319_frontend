@@ -1,5 +1,6 @@
 import { Activity } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import CarbonGlobe from './CarbonGlobe';
 
 const Hero = () => {
@@ -45,10 +46,10 @@ const Hero = () => {
             transition={{ duration: 0.8, delay: 0.6 }}
             className="flex flex-col sm:flex-row gap-6 relative z-30"
           >
-            <button className="relative group w-full sm:w-auto overflow-hidden bg-white/5 backdrop-blur-md border border-white/10 text-white px-10 py-5 rounded-2xl font-semibold text-sm tracking-widest uppercase hover:bg-emerald-500 hover:text-slate-950 transition-all duration-500 hover:scale-105 shadow-[0_0_30px_rgba(255,255,255,0.05)] animate-float">
+            <Link to="/submit" className="relative group w-full sm:w-auto overflow-hidden bg-white/5 backdrop-blur-md border border-white/10 text-white px-10 py-5 rounded-2xl font-semibold text-sm tracking-widest uppercase hover:bg-emerald-500 hover:text-slate-950 transition-all duration-500 hover:scale-105 shadow-[0_0_30px_rgba(255,255,255,0.05)] animate-float text-center">
               CONTRIBUTE
               <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-            </button>
+            </Link>
             
             <button className="w-full sm:w-auto bg-white/5 backdrop-blur-md border border-white/10 text-white px-10 py-5 rounded-2xl font-semibold text-sm tracking-widest uppercase hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all duration-500 animate-float delay-100">
               EXPLORE

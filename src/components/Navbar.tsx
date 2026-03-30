@@ -55,9 +55,9 @@ const Navbar = () => {
                 {item}
               </a>
             ))}
-            <button className="w-full text-center py-4 bg-emerald-500 text-slate-950 rounded-xl font-black text-xs tracking-widest uppercase mt-6">
+            <Link to="/submit" className="block w-full text-center py-4 bg-emerald-500 text-slate-950 rounded-xl font-black text-xs tracking-widest uppercase mt-6">
               LAUNCH CONSOLE
-            </button>
+            </Link>
           </div>
         </motion.div>
       )}
