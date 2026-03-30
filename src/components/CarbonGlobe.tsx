@@ -1,52 +1,74 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import Globe from 'react-globe.gl';
+import * as THREE from 'three';
 
 const CarbonGlobe = () => {
-  const globeRef = useRef<any>();
+  const globeRef = useRef<any>(null);
+  const [mounted, setMounted] = useState(false);
 
-  // Generate 20 random compute nodes with brighter colors
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Generate the 20 compute nodes with glowing rings (Same as before)
   const gData = useMemo(() => [...Array(20).keys()].map(() => {
     const isLowCarbon = Math.random() > 0.4;
     return {
       lat: (Math.random() - 0.5) * 180,
       lng: (Math.random() - 0.5) * 360,
-      size: isLowCarbon ? Math.random() * 2 + 1.5 : Math.random() * 0.8 + 0.5,
-      color: isLowCarbon ? ['#10b981', '#34d399', '#00ff99'][Math.floor(Math.random() * 3)] : '#475569',
-      label: isLowCarbon ? 'LOW CARBON NODE' : 'STANDARD NODE'
+      size: isLowCarbon ? Math.random() * 2 + 1.2 : Math.random() * 0.7 + 0.4,
+      color: isLowCarbon ? ['#10b981', '#34d399', '#05ffa1'][Math.floor(Math.random() * 3)] : '#475569',
     };
   }), []);
 
   useEffect(() => {
-    if (globeRef.current) {
-      // Faster rotation for more energy
-      globeRef.current.controls().autoRotate = true;
-      globeRef.current.controls().autoRotateSpeed = 3.0; 
-      globeRef.current.controls().enableZoom = false;
+    if (mounted && globeRef.current) {
+      try {
+        const controls = globeRef.current.controls();
+        if (controls) {
+          controls.autoRotate = true;
+          controls.autoRotateSpeed = 2.5; 
+          controls.enableZoom = false;
+        }
+        
+        const globeMaterial = globeRef.current.getGlobeMaterial();
+        if (globeMaterial) {
+          globeMaterial.bumpScale = 10;
+          globeMaterial.specular = new THREE.Color('#10b981');
+          globeMaterial.shininess = 20;
+        }
+      } catch (e) {
+        console.error("Globe init error:", e);
+      }
     }
-  }, []);
+  }, [mounted]);
+
+  if (!mounted) return <div className="w-full h-full bg-slate-900/20 rounded-full animate-pulse" />;
 
   return (
-    <div className="w-full h-[600px] md:h-[800px] flex items-center justify-center cursor-grab active:cursor-grabbing drop-shadow-[0_0_50px_rgba(16,185,129,0.3)]">
+    <div className="w-full h-full flex items-center justify-center cursor-grab active:cursor-grabbing drop-shadow-[0_0_100px_rgba(16,185,129,0.3)]">
       <Globe
         ref={globeRef}
         backgroundColor="rgba(0,0,0,0)"
         showAtmosphere={true}
         atmosphereColor="#10b981"
-        atmosphereDaylightAlpha={0.3} // Increased for better visibility
-        globeImageUrl="//unpkg.com/three-globe/example/img/earth-dark.jpg"
+        globeImageUrl="//unpkg.com/three-globe/example/img/earth-night.jpg"
         bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
+        width={1000}
+        height={1000}
         
+        // Glowing Rings (Compute Nodes)
         ringsData={gData}
         ringColor={(d: any) => d.color}
         ringMaxRadius={(d: any) => d.size * 6}
         ringPropagationSpeed={3}
-        ringRepeat={4}
 
+        // Node Dots
         labelsData={gData}
         labelLat={(d: any) => d.lat}
         labelLng={(d: any) => d.lng}
-        labelText={(d: any) => ""}
-        labelDotRadius={(d: any) => d.size * 0.6}
+        labelText={() => ""}
+        labelDotRadius={(d: any) => d.size * 0.8}
         labelColor={(d: any) => d.color}
         labelResolution={2}
       />

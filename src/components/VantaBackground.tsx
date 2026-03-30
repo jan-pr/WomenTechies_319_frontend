@@ -1,71 +1,31 @@
-import { useEffect, useRef, useState, ReactNode } from 'react';
-import * as THREE from 'three';
-// @ts-ignore
-import NET from 'vanta/dist/vanta.net.min';
+import { type ReactNode } from 'react';
 
 interface VantaBackgroundProps {
   children: ReactNode;
 }
 
 const VantaBackground = ({ children }: VantaBackgroundProps) => {
-  const vantaRef = useRef<HTMLDivElement>(null);
-  const [vantaEffect, setVantaEffect] = useState<any>(null);
-
-  useEffect(() => {
-    (window as any).THREE = THREE;
-
-    let effect: any = null;
-
-    const initVanta = () => {
-      if (!effect && vantaRef.current) {
-        try {
-          effect = NET({
-            el: vantaRef.current,
-            THREE: THREE,
-            mouseControls: true,
-            touchControls: true,
-            gyroControls: false,
-            minHeight: 200.00,
-            minWidth: 200.00,
-            scale: 1.00,
-            scaleMobile: 1.00,
-            color: 0x10b981,
-            backgroundColor: 0x050505, // Much darker charcoal for high contrast
-            points: 12.00,
-            maxDistance: 22.00,
-            spacing: 16.00,
-            showDots: false
-          });
-          setVantaEffect(effect);
-        } catch (err) {
-          console.error("Vanta initialization failed:", err);
-        }
-      }
-    };
-
-    const timer = setTimeout(initVanta, 100);
-
-    return () => {
-      clearTimeout(timer);
-      if (effect) effect.destroy();
-    };
-  }, []);
-
   return (
-    <div 
-      ref={vantaRef} 
-      className="min-h-screen w-full relative overflow-hidden bg-[#050505]"
-    >
+    <div className="min-h-screen w-full relative overflow-hidden bg-[#050505]">
+      {/* CSS-Only High-Tech Grid Background */}
+      <div className="absolute inset-0 z-0 pointer-events-none">
+        {/* Horizontal Lines */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1px,transparent_1px),linear-gradient(to_bottom,#1e293b_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_50%,#000_70%,transparent_100%)] opacity-20"></div>
+        
+        {/* Animated Moving Glows */}
+        <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-emerald-500/10 rounded-full blur-[120px] animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-[800px] h-[800px] bg-cyan-500/5 rounded-full blur-[150px] animate-pulse delay-700"></div>
+      </div>
+
+      {/* Main Content Overlay */}
       <div className="relative z-10 w-full">
         {children}
       </div>
 
       <style>{`
-        .vanta-canvas {
-          position: absolute !important;
-          top: 0 !important;
-          left: 0 !important;
-          z-index: 0 !important;
+        body {
+          background-color: #050505;
+          margin: 0;
         }
       `}</style>
     </div>
