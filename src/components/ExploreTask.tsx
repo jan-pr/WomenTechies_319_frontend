@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, CheckCircle2, Code2, Cpu, Link2, Loader2, ServerCog, Upload, Workflow } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -14,6 +14,13 @@ type AssignedNode = {
 type PipelineStep = {
   title: string;
   detail: string;
+};
+
+type BackendNode = {
+  id?: string;
+  carbon_zone?: string;
+  carbon_intensity?: string | number;
+  cpu?: string | number;
 };
 
 const PIPELINE_STEPS: PipelineStep[] = [
@@ -35,11 +42,13 @@ const PIPELINE_STEPS: PipelineStep[] = [
   },
 ];
 
-const ASSIGNED_NODES: AssignedNode[] = [
+const FALLBACK_NODES: AssignedNode[] = [
   { id: 'node-eu-144', region: 'Stockholm, SE', carbonScore: '0.08 kgCO2/kWh', latency: '19 ms', accelerator: '32 vCPU / 64 GB' },
   { id: 'node-in-233', region: 'Bengaluru, IN', carbonScore: '0.11 kgCO2/kWh', latency: '24 ms', accelerator: '16 vCPU / 48 GB' },
   { id: 'node-ca-087', region: 'Montreal, CA', carbonScore: '0.05 kgCO2/kWh', latency: '31 ms', accelerator: '24 vCPU / 96 GB' },
 ];
+
+
 
 const ExploreTask = () => {
   const [taskName, setTaskName] = useState('vision-inference-batch');
@@ -53,34 +62,76 @@ const ExploreTask = () => {
 
   const estimatedRuntime = useMemo(() => `${Math.max(6, entryFile.length + notes.length / 10).toFixed(0)} min`, [entryFile, notes]);
 
-  useEffect(() => {
-    if (!isAssigning) {
-      return undefined;
+ 
+
+    
+
+  const handleAssignNode = async () => {
+  setAssignedNode(null);
+  setActiveStep(0);
+  setIsAssigning(true);
+
+  try {
+    // STEP 1: Submit job
+    const res = await fetch("http://127.0.0.1:8000/submit-job", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        task_type: taskName,
+      }),
+    });
+
+    const data = await res.json();
+    console.log("Job created:", data);
+
+    setActiveStep(1);
+
+    // STEP 2: Assign job
+    const assignRes = await fetch("http://127.0.0.1:8000/assign-job", {
+      method: "POST",
+    });
+
+    const assignData = await assignRes.json();
+    console.log("Assignment:", assignData);
+
+    setActiveStep(2);
+
+    // STEP 3: Fetch node details
+    const nodesRes = await fetch("http://127.0.0.1:8000/nodes");
+    const nodes = await nodesRes.json();
+
+    const assignedNodeId = assignData?.node_id ?? assignData?.node?.id;
+    const nodeList: BackendNode[] = Array.isArray(nodes) ? nodes : Object.values(nodes ?? {});
+    const matchedNode = Array.isArray(nodes)
+      ? nodeList.find((item) => item?.id === assignedNodeId)
+      : nodes?.[assignedNodeId] ?? nodeList.find((item) => item?.id === assignedNodeId);
+
+    if (!matchedNode) {
+      const fallbackNode = FALLBACK_NODES.find((item) => item.id === assignedNodeId) ?? FALLBACK_NODES[0];
+      setAssignedNode(fallbackNode);
+      setActiveStep(3);
+      setIsAssigning(false);
+      return;
     }
 
-    const timers = PIPELINE_STEPS.map((_, index) =>
-      window.setTimeout(() => {
-        setActiveStep(index);
+    setAssignedNode({
+      id: matchedNode.id ?? String(assignedNodeId ?? 'unassigned-node'),
+      region: matchedNode.carbon_zone || "Unknown",
+      carbonScore: String(matchedNode.carbon_intensity ?? "N/A"),
+      latency: String(matchedNode.cpu ?? "N/A"),
+      accelerator: "1 job capacity",
+    });
 
-        if (index === PIPELINE_STEPS.length - 1) {
-          const node = ASSIGNED_NODES[(taskName.length + entryFile.length) % ASSIGNED_NODES.length];
-          setAssignedNode(node);
-          setIsAssigning(false);
-        }
-      }, (index + 1) * 900),
-    );
+    setActiveStep(3);
+    setIsAssigning(false);
 
-    return () => {
-      timers.forEach((timer) => window.clearTimeout(timer));
-    };
-  }, [entryFile, isAssigning, taskName]);
-
-  const handleAssignNode = () => {
-    setAssignedNode(null);
-    setActiveStep(0);
-    setIsAssigning(true);
-  };
-
+  } catch (err) {
+    console.error("Error:", err);
+    setIsAssigning(false);
+  }
+};
   return (
     <div className="min-h-screen pt-32 pb-20 px-6">
       <div className="max-w-7xl mx-auto space-y-10">
