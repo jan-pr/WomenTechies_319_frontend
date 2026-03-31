@@ -31,6 +31,8 @@
   background: linear-gradient(to bottom, #020617, #000000);
   color: #f8fafc;
   font-family: 'Inter', system-ui, sans-serif;
+  scroll-behavior: smooth;
+  scroll-padding-top: 7rem;
 }
 
 body {

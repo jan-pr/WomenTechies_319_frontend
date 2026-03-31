@@ -9,7 +9,7 @@ const NetworkStats = () => {
   ];
 
   return (
-    <div className="relative z-20 -mt-12 px-6">
+    <section id="overview" className="relative z-20 -mt-12 px-6">
       <div className="max-w-7xl mx-auto">
         <div className="relative group">
           {/* Glowing Border Effect */}
@@ -51,7 +51,7 @@ const NetworkStats = () => {
           100% { transform: translateX(-50%); }
         }
       `}</style>
-    </div>
+    </section>
   );
 };
 

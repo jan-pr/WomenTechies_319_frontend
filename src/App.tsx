@@ -7,12 +7,53 @@ import VantaBackground from './components/VantaBackground';
 import SubmitTask from './components/SubmitTask';
 import ExploreTask from './components/ExploreTask';
 
+function DocsSection() {
+  const docsItems = [
+    {
+      title: 'Landing Page',
+      text: 'The home route introduces the platform, shows the overview stats strip, highlights project features, and links into the active workflows.',
+    },
+    {
+      title: 'Submit Route',
+      text: 'The submit page registers a contributor node, stores the generated node id in the UI, and starts a recurring heartbeat request while the node stays online.',
+    },
+    {
+      title: 'Explore Route',
+      text: 'The explore page collects workload details, posts a job to the backend, requests assignment, and then renders the selected node details returned by the current flow.',
+    },
+  ];
+
+  return (
+    <section id="docs" className="py-24 relative z-10">
+      <div className="max-w-7xl mx-auto px-6 lg:px-8">
+        <div className="max-w-3xl">
+          <p className="text-xs font-black uppercase tracking-[0.25em] text-emerald-400 mb-4">Docs</p>
+          <h2 className="text-3xl md:text-5xl font-black tracking-tight text-white">Current project flow</h2>
+          <p className="mt-5 text-lg text-slate-400 leading-relaxed">
+            This section documents what the app already does today so visitors can understand the available routes before opening a workflow.
+          </p>
+        </div>
+
+        <div className="mt-12 grid gap-6 md:grid-cols-3">
+          {docsItems.map((item) => (
+            <div key={item.title} className="rounded-[2rem] border border-white/10 bg-slate-900/35 p-8 backdrop-blur-xl">
+              <p className="text-[10px] font-black uppercase tracking-[0.25em] text-emerald-400">{item.title}</p>
+              <p className="mt-4 text-sm leading-relaxed text-slate-300">{item.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function LandingPage() {
   return (
     <>
       <Hero />
       <NetworkStats />
       <Features />
+      <DocsSection />
       
       {/* Futuristic CTA Section */}
       <section className="py-32 relative z-10">

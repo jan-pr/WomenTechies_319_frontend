@@ -5,6 +5,26 @@ import { Link } from 'react-router-dom';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const navItems = [
+    { label: 'Overview', sectionId: 'overview' },
+    { label: 'Features', sectionId: 'features' },
+    { label: 'Docs', sectionId: 'docs' },
+  ];
+
+  const handleSectionClick = (sectionId: string) => {
+    setIsOpen(false);
+
+    if (window.location.pathname !== '/') {
+      window.location.href = `/#${sectionId}`;
+      return;
+    }
+
+    const section = document.getElementById(sectionId);
+    if (section) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.history.replaceState(null, '', `#${sectionId}`);
+    }
+  };
 
   return (
     <nav className="fixed w-full top-0 z-50 bg-black/10 backdrop-blur-xl border-b border-white/5">
@@ -20,17 +40,18 @@ const Navbar = () => {
           </Link>
 
           <div className="hidden md:flex items-center gap-12">
-            {['Network', 'Features', 'Docs'].map((item) => (
-              <a 
-                key={item} 
-                href={`#${item.toLowerCase()}`} 
+            {navItems.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => handleSectionClick(item.sectionId)}
                 className="text-slate-400 hover:text-white text-xs font-bold uppercase tracking-[0.2em] transition-colors"
               >
-                {item}
-              </a>
+                {item.label}
+              </button>
             ))}
             <Link to="/submit" className="bg-white/5 backdrop-blur-md border border-white/10 text-white px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-500 hover:text-slate-950 transition-all duration-500">
-              Launch Console
+              Join Mesh
             </Link>
           </div>
 
@@ -50,13 +71,18 @@ const Navbar = () => {
           className="md:hidden bg-slate-950/95 backdrop-blur-2xl border-t border-white/5"
         >
           <div className="px-6 py-8 space-y-4">
-            {['Network', 'Features', 'Docs'].map((item) => (
-              <a key={item} href="#" className="block text-slate-400 hover:text-emerald-400 font-bold text-xs uppercase tracking-[0.2em]">
-                {item}
-              </a>
+            {navItems.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => handleSectionClick(item.sectionId)}
+                className="block text-slate-400 hover:text-emerald-400 font-bold text-xs uppercase tracking-[0.2em]"
+              >
+                {item.label}
+              </button>
             ))}
             <Link to="/submit" className="block w-full text-center py-4 bg-emerald-500 text-slate-950 rounded-xl font-black text-xs tracking-widest uppercase mt-6">
-              LAUNCH CONSOLE
+              JOIN MESH
             </Link>
           </div>
         </motion.div>
