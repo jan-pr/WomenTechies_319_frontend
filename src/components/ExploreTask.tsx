@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowRight, CheckCircle2, Code2, Cpu, Link2, Loader2, ServerCog, Upload, Workflow } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Code2, Cpu, Link2, Loader2, RefreshCw, ServerCog, TerminalSquare, Upload, Workflow } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 type AssignedNode = {
@@ -21,6 +21,24 @@ type BackendNode = {
   carbon_zone?: string;
   carbon_intensity?: string | number;
   cpu?: string | number;
+};
+
+type JobStatus = 'queued' | 'assigned' | 'running' | 'completed' | 'failed';
+
+type SchedulerJob = {
+  id: string;
+  status: JobStatus;
+  progress: number;
+  node_id: string | null;
+  result: unknown;
+};
+
+type SchedulerEvent = {
+  type?: string;
+  event?: string;
+  job_id?: string;
+  node_id?: string;
+  progress?: number;
 };
 
 const PIPELINE_STEPS: PipelineStep[] = [
@@ -48,7 +66,171 @@ const FALLBACK_NODES: AssignedNode[] = [
   { id: 'node-ca-087', region: 'Montreal, CA', carbonScore: '0.05 kgCO2/kWh', latency: '31 ms', accelerator: '24 vCPU / 96 GB' },
 ];
 
+const SOCKET_URLS = ['ws://127.0.0.1:8000/ws', 'ws://localhost:8000/ws'];
 
+async function fetchJob(jobId: string) {
+  const res = await fetch('http://127.0.0.1:8000/jobs');
+  const data = await res.json();
+  const jobs = Array.isArray(data) ? data : Object.values(data ?? {});
+  return jobs.find((job) => job && typeof job === 'object' && 'id' in job && (job as { id?: string }).id === jobId);
+}
+
+const extractJobResultDisplay = (result: unknown): string | null => {
+  if (result === null || result === undefined) {
+    return null;
+  }
+
+  if (typeof result === 'string') {
+    return result.trim() ? result : null;
+  }
+
+  if (typeof result === 'object') {
+    const resultObject = result as {
+      result?: unknown;
+    };
+
+    if (resultObject.result && typeof resultObject.result === 'object') {
+      const nestedResult = resultObject.result as {
+        stdout?: unknown;
+      };
+
+      if (typeof nestedResult.stdout === 'string' && nestedResult.stdout.trim()) {
+        return nestedResult.stdout;
+      }
+    }
+
+    if (resultObject.result !== undefined && resultObject.result !== null) {
+      if (typeof resultObject.result === 'string') {
+        return resultObject.result;
+      }
+
+      return JSON.stringify(resultObject.result, null, 2);
+    }
+
+    return JSON.stringify(result, null, 2);
+  }
+
+  return String(result);
+};
+
+const normalizeJob = (job: Record<string, unknown>): SchedulerJob | null => {
+  const rawId = job.id ?? job.job_id;
+  if (typeof rawId !== 'string' || !rawId) {
+    return null;
+  }
+
+  const rawStatus = typeof job.status === 'string' ? job.status : 'queued';
+  const rawProgress = typeof job.progress === 'number' ? job.progress : Number(job.progress ?? 0);
+  const rawNodeId = job.node_id ?? job.nodeId ?? job.assigned_node ?? null;
+
+  return {
+    id: rawId,
+    status: ['assigned', 'running', 'completed', 'failed'].includes(rawStatus) ? (rawStatus as JobStatus) : 'queued',
+    progress: Number.isFinite(rawProgress) ? Math.max(0, Math.min(100, rawProgress)) : 0,
+    node_id: typeof rawNodeId === 'string' && rawNodeId ? rawNodeId : null,
+    result: job.result ?? null,
+  };
+};
+
+function useSchedulerSocket(onMessage: (data: SchedulerEvent) => void) {
+  const [connected, setConnected] = useState(false);
+  const messageHandlerRef = useRef(onMessage);
+
+  useEffect(() => {
+    messageHandlerRef.current = onMessage;
+  }, [onMessage]);
+
+  useEffect(() => {
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | null = null;
+    let urlIndex = 0;
+    let closed = false;
+
+    const clearReconnectTimer = () => {
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+
+    const scheduleReconnect = () => {
+      if (closed) return;
+      clearReconnectTimer();
+      reconnectTimer = window.setTimeout(() => {
+        urlIndex = (urlIndex + 1) % SOCKET_URLS.length;
+        connect();
+      }, 2000);
+    };
+
+    const connect = () => {
+      if (closed) return;
+
+      try {
+        socket = new WebSocket(SOCKET_URLS[urlIndex]);
+      } catch (error) {
+        console.error('WebSocket connection failed:', error);
+        setConnected(false);
+        scheduleReconnect();
+        return;
+      }
+
+      socket.onopen = () => {
+        setConnected(true);
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const parsed = JSON.parse(event.data) as SchedulerEvent;
+          messageHandlerRef.current(parsed);
+        } catch (error) {
+          console.error('Failed to parse scheduler event:', error);
+        }
+      };
+
+      socket.onerror = () => {
+        setConnected(false);
+      };
+
+      socket.onclose = () => {
+        setConnected(false);
+        scheduleReconnect();
+      };
+    };
+
+    connect();
+
+    return () => {
+      closed = true;
+      clearReconnectTimer();
+      setConnected(false);
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      } else if (socket) {
+        socket.onclose = null;
+        socket.close();
+      }
+    };
+  }, []);
+
+  return { connected };
+}
+
+const ProgressBar = ({ progress }: { progress: number }) => (
+  <div className="h-2 overflow-hidden rounded-full bg-white/10">
+    <div
+      className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-[width] duration-500 ease-out"
+      style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+    />
+  </div>
+);
+
+const STATUS_STYLES: Record<JobStatus, string> = {
+  queued: 'bg-slate-500/15 text-slate-300 border border-slate-400/20',
+  assigned: 'bg-amber-500/15 text-amber-300 border border-amber-400/20',
+  running: 'bg-emerald-500/15 text-emerald-300 border border-emerald-400/20',
+  completed: 'bg-green-500/15 text-green-300 border border-green-400/20',
+  failed: 'bg-rose-500/15 text-rose-300 border border-rose-400/20',
+};
 
 const ExploreTask = () => {
   const [taskName, setTaskName] = useState('vision-inference-batch');
@@ -59,79 +241,289 @@ const ExploreTask = () => {
   const [isAssigning, setIsAssigning] = useState(false);
   const [activeStep, setActiveStep] = useState(-1);
   const [assignedNode, setAssignedNode] = useState<AssignedNode | null>(null);
+  const [jobs, setJobs] = useState<Record<string, SchedulerJob>>({});
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [logs, setLogs] = useState('');
+  const [logsError, setLogsError] = useState<string | null>(null);
+  const [isLogsLoading, setIsLogsLoading] = useState(false);
 
   const estimatedRuntime = useMemo(() => `${Math.max(6, entryFile.length + notes.length / 10).toFixed(0)} min`, [entryFile, notes]);
+  const jobsList = useMemo(() => Object.values(jobs), [jobs]);
 
- 
+  const { connected } = useSchedulerSocket((data) => {
+    const eventType = data.type ?? data.event;
+    const jobId = data.job_id;
 
-    
+    if (!eventType || !jobId) return;
+
+    setJobs((current) => {
+      const existing = current[jobId] ?? {
+        id: jobId,
+        status: 'queued' as JobStatus,
+        progress: 0,
+        node_id: null,
+        result: null,
+      };
+
+      switch (eventType) {
+        case 'job_assigned':
+          return {
+            ...current,
+            [jobId]: {
+              ...existing,
+              status: 'assigned',
+              node_id: data.node_id ?? existing.node_id,
+            },
+          };
+        case 'job_progress':
+          return {
+            ...current,
+            [jobId]: {
+              ...existing,
+              status: 'running',
+              progress: typeof data.progress === 'number' ? data.progress : existing.progress,
+              node_id: data.node_id ?? existing.node_id,
+            },
+          };
+        case 'job_completed':
+          fetchJob(jobId)
+            .then((fullJob) => {
+              const result = fullJob && typeof fullJob === 'object' && 'result' in fullJob ? fullJob.result : null;
+
+              setJobs((prev) => ({
+                ...prev,
+                [jobId]: {
+                  ...(prev[jobId] ?? existing),
+                  status: 'completed',
+                  progress: 100,
+                  result,
+                },
+              }));
+            })
+            .catch((error) => {
+              console.error(`Failed to refresh completed job ${jobId}:`, error);
+              setJobs((prev) => ({
+                ...prev,
+                [jobId]: {
+                  ...(prev[jobId] ?? existing),
+                  status: 'completed',
+                  progress: 100,
+                  result: (prev[jobId] ?? existing).result,
+                },
+              }));
+            });
+
+          return current;
+        case 'job_failed':
+          return {
+            ...current,
+            [jobId]: {
+              ...existing,
+              status: 'failed',
+              result: null,
+            },
+          };
+        default:
+          return current;
+      }
+    });
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadJobs = async () => {
+      try {
+        const jobsRes = await fetch('http://127.0.0.1:8000/jobs');
+        const jobsData = await jobsRes.json();
+        const entries = Array.isArray(jobsData) ? jobsData : Object.values(jobsData ?? {});
+        const normalizedJobs = entries.reduce<Record<string, SchedulerJob>>((accumulator, job) => {
+          if (!job || typeof job !== 'object') {
+            return accumulator;
+          }
+
+          const normalized = normalizeJob(job as Record<string, unknown>);
+          if (normalized) {
+            accumulator[normalized.id] = normalized;
+          }
+          return accumulator;
+        }, {});
+
+        if (!cancelled) {
+          setJobs(normalizedJobs);
+        }
+      } catch (error) {
+        console.error('Failed to load jobs:', error);
+      }
+    };
+
+    loadJobs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedNode) return;
+
+    let cancelled = false;
+
+    const fetchLogs = async () => {
+      setIsLogsLoading(true);
+      setLogsError(null);
+
+      try {
+        const response = await fetch(`http://127.0.0.1:8000/debug/agent-logs/${selectedNode}`);
+        if (!response.ok) {
+          throw new Error(`Log request failed with status ${response.status}`);
+        }
+
+        const text = await response.text();
+        if (!cancelled) {
+          setLogs(text);
+        }
+      } catch (error) {
+        console.error('Failed to fetch logs:', error);
+        if (!cancelled) {
+          setLogs('');
+          setLogsError('Failed to fetch logs');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLogsLoading(false);
+        }
+      }
+    };
+
+    fetchLogs();
+    const interval = window.setInterval(fetchLogs, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [selectedNode]);
+
+  const handleRefreshLogs = async () => {
+    if (!selectedNode) return;
+
+    setIsLogsLoading(true);
+    setLogsError(null);
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/debug/agent-logs/${selectedNode}`);
+      if (!response.ok) {
+        throw new Error(`Log request failed with status ${response.status}`);
+      }
+
+      const text = await response.text();
+      setLogs(text);
+    } catch (error) {
+      console.error('Failed to refresh logs:', error);
+      setLogs('');
+      setLogsError('Failed to fetch logs');
+    } finally {
+      setIsLogsLoading(false);
+    }
+  };
 
   const handleAssignNode = async () => {
-  setAssignedNode(null);
-  setActiveStep(0);
-  setIsAssigning(true);
+    setAssignedNode(null);
+    setActiveStep(0);
+    setIsAssigning(true);
 
-  try {
-    // STEP 1: Submit job
-    const res = await fetch("http://127.0.0.1:8000/submit-job", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        task_type: taskName,
-      }),
-    });
+    try {
+      const res = await fetch('http://127.0.0.1:8000/submit-job', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          task_type: taskName,
+        }),
+      });
 
-    const data = await res.json();
-    console.log("Job created:", data);
+      const data = await res.json();
+      console.log('Job created:', data);
 
-    setActiveStep(1);
+      const createdJobId = typeof data?.job_id === 'string' ? data.job_id : typeof data?.id === 'string' ? data.id : null;
+      if (createdJobId) {
+        setJobs((current) => ({
+          ...current,
+          [createdJobId]: current[createdJobId] ?? {
+            id: createdJobId,
+            status: 'queued',
+            progress: 0,
+            node_id: null,
+            result: null,
+          },
+        }));
+      }
 
-    // STEP 2: Assign job
-    const assignRes = await fetch("http://127.0.0.1:8000/assign-job", {
-      method: "POST",
-    });
+      setActiveStep(1);
 
-    const assignData = await assignRes.json();
-    console.log("Assignment:", assignData);
+      const assignRes = await fetch('http://127.0.0.1:8000/assign-job', {
+        method: 'POST',
+      });
 
-    setActiveStep(2);
+      const assignData = await assignRes.json();
+      console.log('Assignment:', assignData);
 
-    // STEP 3: Fetch node details
-    const nodesRes = await fetch("http://127.0.0.1:8000/nodes");
-    const nodes = await nodesRes.json();
+      const jobId = typeof assignData?.job_id === 'string' ? assignData.job_id : createdJobId;
+      const assignedNodeId = assignData?.node_id ?? assignData?.node?.id ?? null;
 
-    const assignedNodeId = assignData?.node_id ?? assignData?.node?.id;
-    const nodeList: BackendNode[] = Array.isArray(nodes) ? nodes : Object.values(nodes ?? {});
-    const matchedNode = Array.isArray(nodes)
-      ? nodeList.find((item) => item?.id === assignedNodeId)
-      : nodes?.[assignedNodeId] ?? nodeList.find((item) => item?.id === assignedNodeId);
+      if (jobId) {
+        setJobs((current) => ({
+          ...current,
+          [jobId]: {
+            ...(current[jobId] ?? {
+              id: jobId,
+              status: 'queued',
+              progress: 0,
+              node_id: null,
+              result: null,
+            }),
+            status: assignedNodeId ? 'assigned' : current[jobId]?.status ?? 'queued',
+            node_id: typeof assignedNodeId === 'string' ? assignedNodeId : current[jobId]?.node_id ?? null,
+          },
+        }));
+      }
 
-    if (!matchedNode) {
-      const fallbackNode = FALLBACK_NODES.find((item) => item.id === assignedNodeId) ?? FALLBACK_NODES[0];
-      setAssignedNode(fallbackNode);
+      setActiveStep(2);
+
+      const nodesRes = await fetch('http://127.0.0.1:8000/nodes');
+      const nodes = await nodesRes.json();
+
+      const nodeList: BackendNode[] = Array.isArray(nodes) ? nodes : Object.values(nodes ?? {});
+      const matchedNode = Array.isArray(nodes)
+        ? nodeList.find((item) => item?.id === assignedNodeId)
+        : nodes?.[assignedNodeId] ?? nodeList.find((item) => item?.id === assignedNodeId);
+
+      if (!matchedNode) {
+        const fallbackNode = FALLBACK_NODES.find((item) => item.id === assignedNodeId) ?? FALLBACK_NODES[0];
+        setAssignedNode(fallbackNode);
+        setActiveStep(3);
+        setIsAssigning(false);
+        return;
+      }
+
+      setAssignedNode({
+        id: matchedNode.id ?? String(assignedNodeId ?? 'unassigned-node'),
+        region: matchedNode.carbon_zone || 'Unknown',
+        carbonScore: String(matchedNode.carbon_intensity ?? 'N/A'),
+        latency: String(matchedNode.cpu ?? 'N/A'),
+        accelerator: '1 job capacity',
+      });
+
       setActiveStep(3);
       setIsAssigning(false);
-      return;
+    } catch (err) {
+      console.error('Error:', err);
+      setIsAssigning(false);
     }
+  };
 
-    setAssignedNode({
-      id: matchedNode.id ?? String(assignedNodeId ?? 'unassigned-node'),
-      region: matchedNode.carbon_zone || "Unknown",
-      carbonScore: String(matchedNode.carbon_intensity ?? "N/A"),
-      latency: String(matchedNode.cpu ?? "N/A"),
-      accelerator: "1 job capacity",
-    });
-
-    setActiveStep(3);
-    setIsAssigning(false);
-
-  } catch (err) {
-    console.error("Error:", err);
-    setIsAssigning(false);
-  }
-};
   return (
     <div className="min-h-screen pt-32 pb-20 px-6">
       <div className="max-w-7xl mx-auto space-y-10">
@@ -265,6 +657,12 @@ const ExploreTask = () => {
                 </div>
               </div>
 
+              {!connected && (
+                <div className="mb-5 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs font-bold uppercase tracking-[0.2em] text-amber-200">
+                  Live updates disconnected
+                </div>
+              )}
+
               <div className="space-y-4">
                 {PIPELINE_STEPS.map((step, index) => {
                   const isComplete = activeStep > index || (!isAssigning && assignedNode !== null && index <= activeStep);
@@ -293,6 +691,128 @@ const ExploreTask = () => {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+
+            <div className="rounded-[2.5rem] border border-white/10 bg-slate-950/55 p-8 backdrop-blur-xl">
+              <div className="mb-6 flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 text-emerald-400">
+                  <ServerCog className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">Live Jobs</p>
+                  <h3 className="text-2xl font-black text-white">Scheduler Activity</h3>
+                </div>
+              </div>
+
+              {jobsList.length === 0 ? (
+                <div className="rounded-3xl border border-dashed border-white/10 bg-black/20 p-5">
+                  <p className="text-sm leading-relaxed text-slate-400">No jobs yet</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {jobsList.map((job) => (
+                    <div key={job.id} className="rounded-3xl border border-white/10 bg-black/20 p-5">
+                      {(() => {
+                        const resultDisplay = extractJobResultDisplay(job.result);
+
+                        return (
+                          <>
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500">Job Id</p>
+                                <p className="mt-2 text-sm font-bold text-white">{job.id}</p>
+                              </div>
+                              <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${STATUS_STYLES[job.status]}`}>
+                                {job.status}
+                              </span>
+                            </div>
+
+                            <div className="mt-4 space-y-3">
+                              <div className="flex items-center justify-between gap-4 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                                <span>Node: {job.node_id ?? 'Pending'}</span>
+                                <span>{job.progress}%</span>
+                              </div>
+                              <ProgressBar progress={job.progress} />
+                            </div>
+
+                            {(resultDisplay || job.status === 'completed') && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="mt-3"
+                        >
+                          <p className="text-xs text-slate-400 uppercase">Result</p>
+                          {resultDisplay ? (
+                            <div className="mt-2 max-h-40 overflow-y-auto rounded-xl bg-black p-3 text-xs font-mono text-green-400">
+                              <pre className="whitespace-pre-wrap">{resultDisplay}</pre>
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-slate-500">No result returned</p>
+                          )}
+                        </motion.div>
+                            )}
+
+                            {job.node_id && (
+                              <button
+                                onClick={() => {
+                                  setSelectedNode((current) => (current === job.node_id ? null : job.node_id));
+                                  setLogs('');
+                                  setLogsError(null);
+                                }}
+                                className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:border-emerald-400/40 hover:bg-emerald-500/10"
+                              >
+                                <TerminalSquare className="h-4 w-4 text-emerald-400" />
+                                {selectedNode === job.node_id ? 'Hide Logs' : 'View Logs'}
+                              </button>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-[2.5rem] border border-white/10 bg-slate-950/55 p-8 backdrop-blur-xl">
+              <div className="mb-6 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/5 text-emerald-400">
+                    <TerminalSquare className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">Agent Logs</p>
+                    <h3 className="text-2xl font-black text-white">Node Console</h3>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleRefreshLogs}
+                  disabled={!selectedNode || isLogsLoading}
+                  className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all hover:border-emerald-400/40 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-4 w-4 text-emerald-400 ${isLogsLoading ? 'animate-spin' : ''}`} />
+                  Refresh Logs
+                </button>
+              </div>
+
+              <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                {selectedNode ? `Viewing ${selectedNode}` : 'Select a job node to view logs'}
+              </div>
+
+              <div className="h-[200px] overflow-y-auto rounded-3xl border border-white/10 bg-black/40 p-5 font-mono text-sm leading-relaxed text-emerald-200">
+                {logsError ? (
+                  <p className="text-rose-300">{logsError}</p>
+                ) : selectedNode ? (
+                  logs.trim() ? (
+                    <pre className="whitespace-pre-wrap">{logs}</pre>
+                  ) : (
+                    <p className="text-slate-400">{isLogsLoading ? 'Loading logs...' : 'No logs available'}</p>
+                  )
+                ) : (
+                  <p className="text-slate-400">No logs available</p>
+                )}
               </div>
             </div>
 
