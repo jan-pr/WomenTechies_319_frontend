@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Loader2, Zap } from 'lucide-react';
+import { Search, Loader2, Power, Zap } from 'lucide-react';
 
 type NodePosition = {
   top: string;
@@ -86,46 +86,67 @@ const SubmitTask = () => {
                 />
               </div>
 
-              <button
-                onClick={async () => {
-                  if (!zone) {
-                    alert('Enter carbon zone');
-                    return;
-                  }
+              <div className="flex flex-col gap-4 sm:flex-row">
+                <button
+                  onClick={async () => {
+                    if (!zone) {
+                      alert('Enter carbon zone');
+                      return;
+                    }
 
-                  setIsFinding(true);
+                    setIsFinding(true);
 
-                  try {
-                    const id = 'node-' + Math.random().toString(36).slice(2, 6);
-                    setNodeId(id);
+                    try {
+                      const id = 'node-' + Math.random().toString(36).slice(2, 6);
+                      setNodeId(id);
 
-                    await fetch('http://127.0.0.1:8000/nodes/register', {
+                      await fetch('http://127.0.0.1:8000/nodes/register', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                          node_id: id,
+                          status: 'idle',
+                          availability: 'idle',
+                          metrics: getNodeMetrics(),
+                          carbon_zone: zone,
+                          cpu: getCPUUsage(),
+                          current_job_id: null,
+                        }),
+                      });
+
+                      setIsOnline(true);
+                      setIsFinding(false);
+                    } catch (err) {
+                      console.error(err);
+                      setIsFinding(false);
+                    }
+                  }}
+                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-emerald-500/20 transition-all hover:scale-105"
+                >
+                  Deploy to Mesh
+                </button>
+
+                <button
+                  onClick={async () => {
+                    if (!nodeId) return;
+
+                    await fetch(`http://127.0.0.1:8000/nodes/${nodeId}/stop`, {
                       method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json',
-                      },
-                      body: JSON.stringify({
-                        node_id: id,
-                        status: 'idle',
-                        availability: 'idle',
-                        metrics: getNodeMetrics(),
-                        carbon_zone: zone,
-                        cpu: getCPUUsage(),
-                        current_job_id: null,
-                      }),
                     });
 
-                    setIsOnline(true);
+                    setIsOnline(false);
                     setIsFinding(false);
-                  } catch (err) {
-                    console.error(err);
-                    setIsFinding(false);
-                  }
-                }}
-                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-emerald-500/20 transition-all hover:scale-105"
-              >
-                Deploy to Mesh
-              </button>
+                    console.log('Node stopped');
+                  }}
+                  disabled={!nodeId || !isOnline}
+                  className="inline-flex items-center justify-center gap-3 rounded-2xl border border-rose-500/25 bg-rose-500/10 px-8 py-4 text-xs font-black uppercase tracking-[0.2em] text-rose-200 transition-all hover:scale-[1.02] hover:border-rose-400/50 hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+                >
+                  <Power className="h-4 w-4" />
+                  Stop Node
+                </button>
+              </div>
             </div>
           </motion.div>
         </div>
